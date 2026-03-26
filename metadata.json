@@ -1,0 +1,7 @@
+{
+  "name": "Taxflowpy",
+  "description": "A mobile-first IRP tax management app for Paraguay with Gemini-powered OCR and financial reporting.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
