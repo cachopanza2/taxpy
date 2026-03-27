@@ -30,7 +30,7 @@ export const ExcelService = {
       reader.onload = (e) => {
         try {
           const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: 'array' });
+          const workbook = XLSX.read(data, { type: 'array', cellDates: true });
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
           const jsonData = XLSX.utils.sheet_to_json(worksheet);
@@ -38,7 +38,22 @@ export const ExcelService = {
           const receipts: Receipt[] = jsonData.map((row: any) => ({
             id: Math.random().toString(36).substr(2, 9),
             userId,
-            date: row['Fecha'] ? new Date(row['Fecha']).toISOString() : new Date().toISOString(),
+            date: (() => {
+              const raw = row['Fecha'];
+              if (!raw) return new Date().toISOString();
+              if (raw instanceof Date) return raw.toISOString();
+              if (typeof raw === 'number') {
+                // Excel serial number: convert days-since-1900 to JS timestamp
+                return new Date(Math.round((raw - 25569) * 86400 * 1000)).toISOString();
+              }
+              if (typeof raw === 'string' && raw.includes('/')) {
+                const p = raw.split('/');
+                if (p.length === 3 && p[0].length <= 2) {
+                  return new Date(p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0')).toISOString();
+                }
+              }
+              return new Date(raw).toISOString();
+            })(),
             providerName: row['Proveedor'] || 'Importado',
             ruc: row['RUC'] || '',
             timbrado: row['Timbrado'] || '',
