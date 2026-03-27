@@ -12,11 +12,11 @@ interface DashboardProps {
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#6366f1'];
 
 export const Dashboard: React.FC<DashboardProps> = ({ receipts, onDelete, onSelect }) => {
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getUTCFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getUTCMonth());
 
-  const years = Array.from(new Set(receipts.map(r => new Date(r.date).getFullYear()))).sort((a, b) => b - a);
-  if (!years.includes(new Date().getFullYear())) years.unshift(new Date().getFullYear());
+  const years = Array.from(new Set(receipts.map(r => new Date(r.date).getUTCFullYear()))).sort((a, b) => b - a);
+  if (!years.includes(new Date().getUTCFullYear())) years.unshift(new Date().getUTCFullYear());
 
   const months = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -25,7 +25,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ receipts, onDelete, onSele
 
   const yearlyReceipts = receipts.filter(r => {
     const d = new Date(r.date);
-    return d.getFullYear() === selectedYear;
+    return d.getUTCFullYear() === selectedYear;
   });
 
   const yearlyIncome = yearlyReceipts
@@ -40,7 +40,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ receipts, onDelete, onSele
 
   const monthlyReceipts = yearlyReceipts.filter(r => {
     const d = new Date(r.date);
-    return d.getMonth() === selectedMonth;
+    return d.getUTCMonth() === selectedMonth;
   });
 
   const monthlyIncome = monthlyReceipts
