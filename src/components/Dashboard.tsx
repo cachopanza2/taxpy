@@ -184,7 +184,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ receipts, onDelete, onSele
                       paddingAngle={3}
                       dataKey="value"
                       stroke="none"
-                      label={({ name, percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
+                      label={({ percent }) => (percent != null && percent > 0.05) ? `${(percent * 100).toFixed(0)}%` : ''}
                       labelLine={false}
                     >
                       {categoryData.map((_entry, index) => (
@@ -192,7 +192,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ receipts, onDelete, onSele
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: number) => [`Gs. ${value.toLocaleString('es-PY')}`, 'Monto']}
+                      formatter={(value: any) => `Gs. ${Number(value).toLocaleString('es-PY')}`}
                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '13px' }}
                     />
                     <Legend
