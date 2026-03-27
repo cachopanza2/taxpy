@@ -51,9 +51,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ receipts, onDelete, onSele
     .filter(r => r.type === ReceiptType.EXPENSE)
     .reduce((acc, curr) => acc + curr.total, 0);
 
+  const normalizeStr = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const categoryData = Object.values(Category).map(cat => {
     const amount = yearlyReceipts
-      .filter(r => r.category === cat && r.type === ReceiptType.EXPENSE)
+      .filter(r => normalizeStr(r.category || '') === normalizeStr(cat) && r.type === ReceiptType.EXPENSE)
       .reduce((acc, curr) => acc + curr.total, 0);
     return { name: cat, value: amount };
   }).filter(item => item.value > 0).sort((a, b) => b.value - a.value);
@@ -165,35 +167,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ receipts, onDelete, onSele
         
         <div className="h-72 w-full">
           {categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  formatter={(value: number | undefined) => value !== undefined ? formatCurrency(value) : ''}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  itemStyle={{ color: '#1e293b', fontWeight: 600 }}
-                />
-                <Legend 
-                  layout="horizontal" 
-                  verticalAlign="bottom" 
-                  align="center"
-                  wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            <>
+              {categoryData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+                  <p className="text-sm">Sin egresos registrados para {selectedYear}</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie
+                      data={categoryData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={85}
+                      paddingAngle={3}
+                      dataKey="value"
+                      stroke="none"
+                      label={({ name, percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
+                      labelLine={false}
+                    >
+                      {categoryData.map((_entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) => [`Gs. ${value.toLocaleString('es-PY')}`, 'Monto']}
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '13px' }}
+                    />
+                    <Legend
+                      iconType="circle"
+                      iconSize={8}
+                      formatter={(value) => <span style={{ fontSize: '12px', color: '#475569' }}>{value}</span>}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
               <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
