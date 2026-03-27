@@ -56,7 +56,8 @@ export const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, on
       const date = new Date(receipt.date);
       const groupKey = date.toLocaleDateString('es-PY', {
         month: 'long',
-        year: 'numeric'
+        year: 'numeric',
+        timeZone: 'UTC'
       });
       
       if (!groups[groupKey]) {
@@ -171,7 +172,7 @@ export const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, on
                         <div className="flex items-center gap-3 text-[11px] font-bold text-slate-400 uppercase tracking-tight">
                           <span className="flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
-                            {new Date(receipt.date).toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}
+                            {new Date(receipt.date).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', timeZone: 'UTC' })}
                           </span>
                           <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
                           <span className="flex items-center gap-1">
