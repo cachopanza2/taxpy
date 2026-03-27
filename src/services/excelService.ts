@@ -41,15 +41,22 @@ export const ExcelService = {
             date: (() => {
               const raw = row['Fecha'];
               if (!raw) return new Date().toISOString();
-              if (raw instanceof Date) return raw.toISOString();
+              if (raw instanceof Date) {
+                // cellDates:true -> Date in local time; use noon to avoid TZ shift on .toISOString()
+                const d = new Date(raw);
+                d.setHours(12, 0, 0, 0);
+                return d.toISOString();
+              }
               if (typeof raw === 'number') {
-                // Excel serial number: convert days-since-1900 to JS timestamp
-                return new Date(Math.round((raw - 25569) * 86400 * 1000)).toISOString();
+                // Excel serial: days since 1900-01-01; add noon offset to avoid TZ shift
+                const ms = Math.round((raw - 25569) * 86400 * 1000) + 12 * 3600 * 1000;
+                return new Date(ms).toISOString();
               }
               if (typeof raw === 'string' && raw.includes('/')) {
                 const p = raw.split('/');
                 if (p.length === 3 && p[0].length <= 2) {
-                  return new Date(p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0')).toISOString();
+                  // DD/MM/YYYY -> use local noon (not UTC midnight) to avoid TZ shift
+                  return new Date(+p[2], +p[1] - 1, +p[0], 12, 0, 0).toISOString();
                 }
               }
               return new Date(raw).toISOString();
