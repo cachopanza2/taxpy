@@ -15,6 +15,10 @@ View your app in AI Studio: https://ai.studio/apps/db57f2a6-822e-41af-bb59-c3b54
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+2. Run the app with the Netlify CLI so the `/api/extract-receipt` function and
+   AI Gateway credentials are available:
+   `netlify dev`
+
+Gemini calls are made server-side from the `extract-receipt` Netlify Function
+through Netlify AI Gateway, so no API key needs to be configured manually in
+deployed environments.
