@@ -1,125 +1,112 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Receipt, ReceiptType } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Download, FileSpreadsheet, TrendingUp, Calculator, TrendingDown, ArrowRightLeft } from 'lucide-react';
+import { Download, FileSpreadsheet, TrendingUp, Calculator, TrendingDown, ArrowRightLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ExcelService } from '../services/excelService';
 
 interface ReportsProps {
   receipts: Receipt[];
 }
 
+function toMonthKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthLabel(key: string) {
+  const [y, m] = key.split('-');
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  return d.toLocaleDateString('es-PY', { month: 'long', year: 'numeric' });
+}
+
+function prevMonth(key: string) {
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return toMonthKey(d);
+}
+
+function nextMonth(key: string) {
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m, 1);
+  return toMonthKey(d);
+}
+
 export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
+  const [ivaMonthKey, setIvaMonthKey] = useState(() => toMonthKey(new Date()));
+
   const { incomeChartData, expenseChartData, comparisonChartData, irpData, ivaData } = useMemo(() => {
-    const currentYear = new Date().getUTCFullYear();
-    const currentYearReceipts = receipts.filter(r => new Date(r.date).getUTCFullYear() === currentYear);
+    const incomeMap: Record<string, number> = {};
+    const expenseMap: Record<string, number> = {};
+    const allMonthsSet = new Set<string>();
 
-    const incomeByMonth: number[] = Array(12).fill(0);
-    const expenseByMonth: number[] = Array(12).fill(0);
-
-    currentYearReceipts.forEach(r => {
-      const monthIndex = new Date(r.date).getUTCMonth();
+    receipts.forEach(r => {
+      const date = new Date(r.date);
+      const monthKey = date.toLocaleDateString('es-PY', { month: 'short', year: '2-digit' });
+      allMonthsSet.add(monthKey);
       if (r.type === ReceiptType.INCOME) {
-        incomeByMonth[monthIndex] += r.total;
+        incomeMap[monthKey] = (incomeMap[monthKey] || 0) + r.total;
       } else {
-        expenseByMonth[monthIndex] += r.total;
+        expenseMap[monthKey] = (expenseMap[monthKey] || 0) + r.total;
       }
     });
 
-    const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const sortedMonths = Array.from(allMonthsSet).sort((a, b) => {
+      const [mA, yA] = a.split(' ');
+      const [mB, yB] = b.split(' ');
+      return new Date(`1 ${mA} 20${yA}`).getTime() - new Date(`1 ${mB} 20${yB}`).getTime();
+    });
 
-    const incomeData = monthLabels.map((month, i) => ({
+    const incomeData = sortedMonths.map(month => ({ month, amount: incomeMap[month] || 0 }));
+    const expenseData = sortedMonths.map(month => ({ month, amount: expenseMap[month] || 0 }));
+    const comparisonData = sortedMonths.map(month => ({
       month,
-      amount: incomeByMonth[i]
+      ingreso: incomeMap[month] || 0,
+      egreso: expenseMap[month] || 0,
     }));
 
-    const expenseData = monthLabels.map((month, i) => ({
-      month,
-      amount: expenseByMonth[i]
-    }));
-
-    const comparisonData = monthLabels.map((month, i) => ({
-      month,
-      ingreso: incomeByMonth[i],
-      egreso: expenseByMonth[i]
-    }));
-
-    // IRP Calculation (Current Year)
-
-    const ingresosAnuales = currentYearReceipts
-      .filter(r => r.type === ReceiptType.INCOME)
-      .reduce((acc, curr) => acc + curr.total, 0);
-
-    const gastosDeducibles = currentYearReceipts
-      .filter(r => r.type === ReceiptType.EXPENSE && (r.isDeductible !== false))
-      .reduce((acc, curr) => acc + curr.total, 0);
-
+    // IRP – year to date
+    const currentYear = new Date().getFullYear();
+    const yearReceipts = receipts.filter(r => new Date(r.date).getFullYear() === currentYear);
+    const ingresosAnuales = yearReceipts.filter(r => r.type === ReceiptType.INCOME).reduce((s, r) => s + r.total, 0);
+    const gastosDeducibles = yearReceipts.filter(r => r.type === ReceiptType.EXPENSE && r.isDeductible !== false).reduce((s, r) => s + r.total, 0);
     const rentaNeta = Math.max(0, ingresosAnuales - gastosDeducibles);
-
     let irpRate = 0;
-    if (rentaNeta > 0) {
-      if (rentaNeta <= 50000000) irpRate = 0.08;
-      else if (rentaNeta <= 150000000) irpRate = 0.09;
-      else irpRate = 0.10;
-    }
+    if (rentaNeta > 150_000_000) irpRate = 0.10;
+    else if (rentaNeta > 50_000_000) irpRate = 0.09;
+    else if (rentaNeta > 0) irpRate = 0.08;
 
-    const irpEstimated = rentaNeta * irpRate;
-
-    // IVA Calculation (Current Month)
-    const now = new Date();
-    const currentMonth = now.getUTCMonth();
-    const currentMonthName = now.toLocaleDateString('es-PY', { month: 'long', timeZone: 'UTC' });
-
-    const currentMonthReceipts = currentYearReceipts.filter(r => new Date(r.date).getUTCMonth() === currentMonth);
-
-    const ivaDebito = currentMonthReceipts
-      .filter(r => r.type === ReceiptType.INCOME)
-      .reduce((acc, curr) => acc + (curr.iva10 || 0) + (curr.iva5 || 0), 0);
-
-    const ivaCredito = currentMonthReceipts
-      .filter(r => r.type === ReceiptType.EXPENSE)
-      .reduce((acc, curr) => acc + (curr.iva10 || 0) + (curr.iva5 || 0), 0);
-
-    const ivaSaldo = ivaDebito - ivaCredito;
+    // IVA – selected month
+    const [selY, selM] = ivaMonthKey.split('-').map(Number);
+    const ivaReceipts = receipts.filter(r => {
+      const d = new Date(r.date);
+      return d.getFullYear() === selY && d.getMonth() + 1 === selM;
+    });
+    const ivaDebito = ivaReceipts.filter(r => r.type === ReceiptType.INCOME).reduce((s, r) => s + (r.iva10 || 0) + (r.iva5 || 0), 0);
+    const ivaCredito = ivaReceipts.filter(r => r.type === ReceiptType.EXPENSE).reduce((s, r) => s + (r.iva10 || 0) + (r.iva5 || 0), 0);
 
     return {
       incomeChartData: incomeData,
       expenseChartData: expenseData,
       comparisonChartData: comparisonData,
-      irpData: {
-        ingresosAnuales,
-        gastosDeducibles,
-        rentaNeta,
-        irpRate,
-        irpEstimated,
-        year: currentYear
-      },
-      ivaData: {
-        monthName: currentMonthName,
-        debit: ivaDebito,
-        credit: ivaCredito,
-        balance: ivaSaldo
-      }
+      irpData: { ingresosAnuales, gastosDeducibles, rentaNeta, irpRate, irpEstimated: rentaNeta * irpRate, year: currentYear },
+      ivaData: { debit: ivaDebito, credit: ivaCredito, balance: ivaDebito - ivaCredito },
     };
-  }, [receipts]);
+  }, [receipts, ivaMonthKey]);
 
-  const handleExport = () => {
-    ExcelService.exportToExcel(receipts);
-  };
+  const isCurrentMonth = ivaMonthKey === toMonthKey(new Date());
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-PY', { style: 'currency', currency: 'PYG', maximumFractionDigits: 0 }).format(amount);
-  };
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('es-PY', { style: 'currency', currency: 'PYG', maximumFractionDigits: 0 }).format(amount);
 
   const formatYAxis = (value: number) => {
-    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(0)}k`;
     return value.toString();
   };
 
   return (
     <div className="space-y-6 pb-24 animate-in fade-in duration-500">
-      
-      {/* Income vs Expense Comparison */}
+
+      {/* Balance General */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -130,29 +117,13 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
             <ArrowRightLeft className="w-5 h-5 text-blue-600" />
           </div>
         </div>
-        
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={comparisonChartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis 
-                dataKey="month" 
-                tick={{fill: '#94a3b8', fontSize: 11, fontWeight: 500}} 
-                axisLine={false}
-                tickLine={false}
-                dy={10}
-              />
-              <YAxis 
-                tick={{fill: '#94a3b8', fontSize: 10}} 
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={formatYAxis}
-              />
-              <Tooltip 
-                cursor={{fill: '#f8fafc', radius: 8}}
-                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                formatter={(value: number | undefined) => value !== undefined ? formatCurrency(value) : ''}
-              />
+              <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} dy={10} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={formatYAxis} />
+              <Tooltip cursor={{ fill: '#f8fafc', radius: 8 }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(value: number | undefined) => value !== undefined ? formatCurrency(value) : ''} />
               <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} />
               <Bar name="Ingresos" dataKey="ingreso" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
               <Bar name="Egresos" dataKey="egreso" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={20} />
@@ -161,7 +132,7 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
         </div>
       </div>
 
-      {/* Monthly Income Chart */}
+      {/* Ingresos Mensuales */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -172,41 +143,20 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
             <TrendingUp className="w-5 h-5 text-emerald-600" />
           </div>
         </div>
-        
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={incomeChartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis 
-                dataKey="month" 
-                tick={{fill: '#94a3b8', fontSize: 11, fontWeight: 500}} 
-                axisLine={false}
-                tickLine={false}
-                dy={10}
-              />
-              <YAxis 
-                tick={{fill: '#94a3b8', fontSize: 10}} 
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={formatYAxis}
-              />
-              <Tooltip 
-                cursor={{fill: '#f8fafc', radius: 8}}
-                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                formatter={(value: number | undefined) => [value !== undefined ? formatCurrency(value) : '', 'Ingreso']}
-              />
-              <Bar 
-                dataKey="amount" 
-                fill="#10b981" 
-                radius={[6, 6, 6, 6]} 
-                barSize={32}
-              />
+              <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} dy={10} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={formatYAxis} />
+              <Tooltip cursor={{ fill: '#f8fafc', radius: 8 }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(value: number | undefined) => [value !== undefined ? formatCurrency(value) : '', 'Ingreso']} />
+              <Bar dataKey="amount" fill="#10b981" radius={[6, 6, 6, 6]} barSize={32} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Monthly Expenses Chart */}
+      {/* Egresos Mensuales */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -217,49 +167,27 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
             <TrendingDown className="w-5 h-5 text-rose-600" />
           </div>
         </div>
-        
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={expenseChartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis 
-                dataKey="month" 
-                tick={{fill: '#94a3b8', fontSize: 11, fontWeight: 500}} 
-                axisLine={false}
-                tickLine={false}
-                dy={10}
-              />
-              <YAxis 
-                tick={{fill: '#94a3b8', fontSize: 10}} 
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={formatYAxis}
-              />
-              <Tooltip 
-                cursor={{fill: '#f8fafc', radius: 8}}
-                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                formatter={(value: number | undefined) => [value !== undefined ? formatCurrency(value) : '', 'Egreso']}
-              />
-              <Bar 
-                dataKey="amount" 
-                fill="#ef4444" 
-                radius={[6, 6, 6, 6]} 
-                barSize={32}
-              />
+              <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} dy={10} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={formatYAxis} />
+              <Tooltip cursor={{ fill: '#f8fafc', radius: 8 }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(value: number | undefined) => [value !== undefined ? formatCurrency(value) : '', 'Egreso']} />
+              <Bar dataKey="amount" fill="#ef4444" radius={[6, 6, 6, 6]} barSize={32} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* IRP Summary Card */}
+      {/* IRP */}
       <div className="bg-gradient-to-br from-emerald-900 to-emerald-800 text-white p-6 rounded-3xl shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/20 rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl"></div>
+        <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/20 rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl" />
         <div className="relative z-10">
           <div className="flex items-center gap-2 mb-6 opacity-90">
             <Calculator className="w-5 h-5" />
             <h3 className="text-lg font-bold">Cálculo IRP {irpData.year}</h3>
           </div>
-          
           <div className="space-y-3">
             <div className="flex justify-between items-center border-b border-emerald-700/50 pb-2 gap-2">
               <span className="text-emerald-200 text-xs font-medium shrink-0">Ingresos Anuales</span>
@@ -273,7 +201,6 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
               <span className="text-white font-bold text-xs shrink-0">Renta Neta Imponible</span>
               <span className="font-bold text-base tracking-tight truncate">{formatCurrency(irpData.rentaNeta)}</span>
             </div>
-            
             <div className="bg-emerald-950/40 p-4 rounded-2xl mt-3 border border-emerald-500/20 backdrop-blur-sm">
               <div className="flex justify-between items-center mb-3">
                 <span className="text-[10px] text-emerald-400 uppercase font-bold tracking-wider">Tasa Aplicable</span>
@@ -283,13 +210,10 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
               </div>
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs font-medium text-emerald-100/80">Impuesto Estimado</span>
-                <span className="text-2xl font-bold text-white tracking-tight truncate" title={formatCurrency(irpData.irpEstimated)}>
-                  {formatCurrency(irpData.irpEstimated)}
-                </span>
+                <span className="text-2xl font-bold text-white tracking-tight truncate">{formatCurrency(irpData.irpEstimated)}</span>
               </div>
             </div>
           </div>
-
           <div className="mt-6 pt-2 border-t border-emerald-800/50">
             <p className="text-[10px] text-emerald-200/60 leading-relaxed text-center">
               * Cálculo simplificado según escalas vigentes. No sustituye el asesoramiento contable profesional.
@@ -298,15 +222,35 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
         </div>
       </div>
 
-      {/* IVA Summary Card */}
+      {/* IVA con filtro de mes */}
       <div className="bg-gradient-to-br from-indigo-900 to-indigo-800 text-white p-6 rounded-3xl shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/20 rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl"></div>
+        <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/20 rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl" />
         <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-6 opacity-90">
-            <Calculator className="w-5 h-5" />
-            <h3 className="text-lg font-bold capitalize">IVA {ivaData.monthName}</h3>
+          <div className="flex items-center justify-between gap-2 mb-5">
+            <div className="flex items-center gap-2 opacity-90">
+              <Calculator className="w-5 h-5" />
+              <h3 className="text-lg font-bold">IVA Mensual</h3>
+            </div>
           </div>
-          
+
+          {/* Month navigator */}
+          <div className="flex items-center justify-between bg-indigo-950/40 rounded-2xl px-3 py-2 mb-5 border border-indigo-500/20">
+            <button
+              onClick={() => setIvaMonthKey(prevMonth(ivaMonthKey))}
+              className="p-1.5 hover:bg-indigo-500/20 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-bold capitalize">{monthLabel(ivaMonthKey)}</span>
+            <button
+              onClick={() => setIvaMonthKey(nextMonth(ivaMonthKey))}
+              disabled={isCurrentMonth}
+              className="p-1.5 hover:bg-indigo-500/20 rounded-lg transition-colors disabled:opacity-30"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
           <div className="space-y-3">
             <div className="flex justify-between items-center border-b border-indigo-700/50 pb-2 gap-2">
               <span className="text-indigo-200 text-xs font-medium shrink-0">IVA Débito (Ventas)</span>
@@ -316,13 +260,12 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
               <span className="text-indigo-200 text-xs font-medium shrink-0">IVA Crédito (Compras)</span>
               <span className="font-bold tracking-tight text-rose-300 text-sm truncate">-{formatCurrency(ivaData.credit)}</span>
             </div>
-            
             <div className="bg-indigo-950/40 p-4 rounded-2xl mt-3 border border-indigo-500/20 backdrop-blur-sm">
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs font-medium text-indigo-100/80">
-                  {ivaData.balance > 0 ? 'Saldo a Pagar' : 'Saldo a Favor'}
+                  {ivaData.balance > 0 ? 'Saldo a Pagar' : ivaData.balance < 0 ? 'Saldo a Favor' : 'Sin movimientos'}
                 </span>
-                <span className={`text-2xl font-bold tracking-tight truncate ${ivaData.balance > 0 ? 'text-rose-300' : 'text-emerald-300'}`} title={formatCurrency(Math.abs(ivaData.balance))}>
+                <span className={`text-2xl font-bold tracking-tight truncate ${ivaData.balance > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
                   {formatCurrency(Math.abs(ivaData.balance))}
                 </span>
               </div>
@@ -331,9 +274,9 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
         </div>
       </div>
 
-      {/* Export Action */}
-      <button 
-        onClick={handleExport}
+      {/* Exportar */}
+      <button
+        onClick={() => ExcelService.exportToExcel(receipts)}
         className="w-full bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:border-emerald-200 transition-colors"
       >
         <div className="flex items-center gap-4">

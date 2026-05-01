@@ -1,24 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Dashboard } from './components/Dashboard';
 import { ReceiptList } from './components/ReceiptList';
 import { Reports } from './components/Reports';
 import { ReceiptModal } from './components/ReceiptModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ConfirmationModal } from './components/ConfirmationModal';
+import { LoginPage } from './components/LoginPage';
 import { StorageService } from './services/storageService';
 import { LocalOcrService, OcrProgress } from './services/localOcrService';
 import { GeminiService } from './services/geminiService';
 import { ExcelService } from './services/excelService';
+import { AuthService, AuthUser } from './services/authService';
 import { Receipt, ReceiptType, Category, ReceiptStatus, ReceiptOrigin, UserProfile } from './types';
-import { Home, List, PieChart, Plus, Settings, Camera, Image, FileSpreadsheet, Loader2, User, ScanLine, X, RotateCw, Check } from 'lucide-react';
+import { Home, List, PieChart, Plus, Settings, Camera, Image, FileSpreadsheet, User, ScanLine, X, RotateCw, Check } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 function App() {
+  // Auth
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
   const [activeTab, setActiveTab] = useState<'dashboard' | 'receipts' | 'reports'>('dashboard');
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [isInitializing, setIsInitializing] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   
   const [showUploadMenu, setShowUploadMenu] = useState(false);
@@ -40,23 +46,36 @@ function App() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const initData = async () => {
-      try {
-        const profile = await StorageService.initializeDefaultUser();
-        setUserProfile(profile);
-        
-        const savedReceipts = await StorageService.getReceipts(profile.id);
-        setReceipts(savedReceipts);
-      } catch (error) {
-        console.error("Initialization error:", error);
-        setInitError(error instanceof Error ? error.message : String(error));
-      } finally {
-        setIsInitializing(false);
-      }
-    };
-    initData();
+  const loadData = useCallback(async () => {
+    setIsInitializing(true);
+    setInitError(null);
+    try {
+      const profile = await StorageService.initializeDefaultUser();
+      setUserProfile(profile);
+      const savedReceipts = await StorageService.getReceipts(profile.id);
+      setReceipts(savedReceipts);
+    } catch (error) {
+      console.error("Initialization error:", error);
+      setInitError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsInitializing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    const user = AuthService.getUser();
+    const token = AuthService.getToken();
+    if (user && token) {
+      setAuthUser(user);
+      loadData();
+    }
+    setIsCheckingAuth(false);
+  }, [loadData]);
+
+  const handleLogin = useCallback((user: AuthUser) => {
+    setAuthUser(user);
+    loadData();
+  }, [loadData]);
 
   const refreshData = async () => {
      if (userProfile) {
@@ -252,6 +271,23 @@ function App() {
     setIsModalOpen(true);
     setShowUploadMenu(false);
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center animate-pulse">
+            <ScanLine className="w-8 h-8 text-emerald-600" />
+          </div>
+          <p className="text-slate-500 font-medium animate-pulse">Cargando TaxFlow...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
   if (isInitializing) {
     return (
@@ -545,6 +581,7 @@ function App() {
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
           onClearData={handleClearData}
+          onLogout={() => AuthService.logout()}
           receipts={receipts}
           userProfile={userProfile}
           onUpdateProfile={handleUpdateProfile}

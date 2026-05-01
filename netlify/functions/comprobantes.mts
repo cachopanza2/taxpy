@@ -1,21 +1,46 @@
 import { neon } from "@neondatabase/serverless";
 import type { NeonQueryFunction } from "@neondatabase/serverless";
 
-// Lazy-initialize the SQL connection to avoid top-level errors
 let _sql: NeonQueryFunction<false, false> | null = null;
 
 function getSql() {
   if (!_sql) {
     const dbUrl = process.env.NETLIFY_DATABASE_URL;
-    if (!dbUrl) {
-      throw new Error("NETLIFY_DATABASE_URL environment variable is not set");
-    }
+    if (!dbUrl) throw new Error("NETLIFY_DATABASE_URL environment variable is not set");
     _sql = neon(dbUrl);
   }
   return _sql;
 }
 
-// Default user ID - in a real app this would come from auth
+// ─── JWT verification (inlined to avoid cross-function import issues) ────────
+
+const _enc = new TextEncoder();
+
+async function verifyJwt(token: string): Promise<{ sub: string } | null> {
+  try {
+    const secret = process.env.JWT_SECRET || "taxflow-dev-secret-CHANGE-IN-PROD";
+    const [h, p, s] = token.split(".");
+    if (!h || !p || !s) return null;
+    const key = await crypto.subtle.importKey(
+      "raw", _enc.encode(secret),
+      { name: "HMAC", hash: "SHA-256" }, false, ["verify"]
+    );
+    const sigBytes = Uint8Array.from(
+      atob(s.replace(/-/g, "+").replace(/_/g, "/")),
+      (c) => c.charCodeAt(0)
+    );
+    const ok = await crypto.subtle.verify("HMAC", key, sigBytes, _enc.encode(`${h}.${p}`));
+    if (!ok) return null;
+    const payload = JSON.parse(atob(p.replace(/-/g, "+").replace(/_/g, "/")));
+    if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// ─── User resolution ─────────────────────────────────────────────────────────
+
 const DEFAULT_USER_EMAIL = "demo@taxflow.py";
 const DEFAULT_USER_NAME = "Usuario Demo";
 
@@ -98,6 +123,16 @@ function mapRowToReceipt(row: Record<string, unknown>) {
   };
 }
 
+async function resolveUserId(req: Request): Promise<string> {
+  const auth = req.headers.get("Authorization");
+  if (auth?.startsWith("Bearer ")) {
+    const payload = await verifyJwt(auth.slice(7));
+    if (payload?.sub) return payload.sub;
+  }
+  // Fallback to shared demo user
+  return getOrCreateDefaultUser();
+}
+
 export default async (req: Request) => {
   const url = new URL(req.url);
   const pathParts = url.pathname.replace(/^\/api\/comprobantes\/?/, "").split("/").filter(Boolean);
@@ -105,7 +140,7 @@ export default async (req: Request) => {
 
   try {
     const sql = getSql();
-    const userId = await getOrCreateDefaultUser();
+    const userId = await resolveUserId(req);
 
     // GET /api/comprobantes
     if (req.method === "GET" && !comprobanteId) {
