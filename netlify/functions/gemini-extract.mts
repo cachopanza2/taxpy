@@ -2,29 +2,30 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 export default async (req: Request) => {
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ error: "Method not allowed" }, 405);
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: "GEMINI_API_KEY no está configurada en las variables de entorno." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return json({ error: "GEMINI_API_KEY no está configurada en Netlify. Ve a Site configuration > Environment variables." }, 500);
+  }
+
+  let base64Data: string;
+  let mimeType: string;
+
+  try {
+    const body = await req.json();
+    base64Data = body?.base64Data;
+    mimeType = body?.mimeType;
+  } catch (e) {
+    return json({ error: "El cuerpo de la solicitud no es JSON válido o está vacío." }, 400);
+  }
+
+  if (!base64Data || !mimeType) {
+    return json({ error: "Faltan parámetros requeridos: base64Data y mimeType." }, 400);
   }
 
   try {
-    const { base64Data, mimeType } = await req.json();
-    if (!base64Data || !mimeType) {
-      return new Response(JSON.stringify({ error: "Faltan parámetros: base64Data y mimeType son requeridos." }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
     const ai = new GoogleGenAI({ apiKey });
 
     const response = await ai.models.generateContent({
@@ -83,27 +84,26 @@ export default async (req: Request) => {
 
     const responseText = response.text;
     if (!responseText) {
-      return new Response(JSON.stringify({ error: "No response text from Gemini" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      return json({ error: "Gemini no devolvió datos. Intenta con otra imagen." }, 500);
     }
 
     const cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
     const data = JSON.parse(cleanJson);
+    return json(data, 200);
 
-    return new Response(JSON.stringify(data), {
-      headers: { "Content-Type": "application/json" },
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("Gemini extract error:", message);
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error("gemini-extract error:", message);
+    return json({ error: `Error de Gemini: ${message}` }, 500);
   }
 };
+
+function json(data: unknown, status: number) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 export const config = {
   path: "/api/gemini-extract",

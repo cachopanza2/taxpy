@@ -1,30 +1,54 @@
 import { Receipt, ReceiptType, Category, ReceiptStatus, ReceiptOrigin, DocumentType } from '../types';
 
+const MAX_SIDE_PX = 1200;
+const JPEG_QUALITY = 0.82;
+
+function compressToJpeg(dataUrl: string): Promise<{ base64: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error('No se pudo cargar la imagen para comprimir.'));
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > MAX_SIDE_PX || height > MAX_SIDE_PX) {
+        if (width >= height) {
+          height = Math.round(height * (MAX_SIDE_PX / width));
+          width = MAX_SIDE_PX;
+        } else {
+          width = Math.round(width * (MAX_SIDE_PX / height));
+          height = MAX_SIDE_PX;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('No se pudo obtener contexto del canvas.')); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      const jpeg = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+      const match = jpeg.match(/^data:(image\/jpeg);base64,(.+)$/);
+      if (!match) { reject(new Error('Error al convertir imagen a JPEG.')); return; }
+      resolve({ base64: match[2], mimeType: match[1] });
+    };
+    img.src = dataUrl;
+  });
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+  });
+}
+
 export const GeminiService = {
   extractReceiptData: async (imageInput: File | string): Promise<Partial<Receipt>> => {
-    let base64Data: string;
-    let mimeType: string;
+    const rawDataUrl = imageInput instanceof File
+      ? await fileToDataUrl(imageInput)
+      : imageInput;
 
-    if (imageInput instanceof File) {
-      mimeType = imageInput.type;
-      base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(imageInput);
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(',')[1]);
-        };
-        reader.onerror = reject;
-      });
-    } else {
-      const matches = imageInput.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-      if (matches && matches.length === 3) {
-        mimeType = matches[1];
-        base64Data = matches[2];
-      } else {
-        throw new Error("Invalid image input format");
-      }
-    }
+    const { base64: base64Data, mimeType } = await compressToJpeg(rawDataUrl);
 
     const response = await fetch('/api/gemini-extract', {
       method: 'POST',
@@ -33,8 +57,12 @@ export const GeminiService = {
     });
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: response.statusText }));
-      throw new Error(err.error || `Error ${response.status}`);
+      let message = `Error ${response.status}`;
+      try {
+        const err = await response.json();
+        if (err?.error) message = err.error;
+      } catch (_) { /* body no es JSON (error de infraestructura) */ }
+      throw new Error(message);
     }
 
     const data = await response.json();
@@ -58,7 +86,7 @@ export const GeminiService = {
       iva5: data.iva5 || 0,
       currency: data.currency || 'PYG',
       documentType: docType,
-      type: type,
+      type,
       category: Category.OTHER,
       origin: ReceiptOrigin.CAMERA,
       status: ReceiptStatus.PENDING,
