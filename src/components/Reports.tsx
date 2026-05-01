@@ -10,49 +10,40 @@ interface ReportsProps {
 
 export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
   const { incomeChartData, expenseChartData, comparisonChartData, irpData, ivaData } = useMemo(() => {
-    const incomeMap: Record<string, number> = {};
-    const expenseMap: Record<string, number> = {};
-    const allMonthsSet = new Set<string>();
+    const currentYear = new Date().getUTCFullYear();
+    const currentYearReceipts = receipts.filter(r => new Date(r.date).getUTCFullYear() === currentYear);
 
-    receipts.forEach(r => {
-      const date = new Date(r.date);
-      const monthKey = date.toLocaleDateString('es-PY', { month: 'short', year: '2-digit' });
-      allMonthsSet.add(monthKey);
+    const incomeByMonth: number[] = Array(12).fill(0);
+    const expenseByMonth: number[] = Array(12).fill(0);
 
+    currentYearReceipts.forEach(r => {
+      const monthIndex = new Date(r.date).getUTCMonth();
       if (r.type === ReceiptType.INCOME) {
-        incomeMap[monthKey] = (incomeMap[monthKey] || 0) + r.total;
+        incomeByMonth[monthIndex] += r.total;
       } else {
-        expenseMap[monthKey] = (expenseMap[monthKey] || 0) + r.total;
+        expenseByMonth[monthIndex] += r.total;
       }
     });
 
-    // Sort months chronologically
-    const sortedMonths = Array.from(allMonthsSet).sort((a, b) => {
-      const [monthA, yearA] = a.split(' ');
-      const [monthB, yearB] = b.split(' ');
-      // Simple approximation for sorting, ideally use real dates
-      return new Date(`1 ${monthA} 20${yearA}`).getTime() - new Date(`1 ${monthB} 20${yearB}`).getTime();
-    });
+    const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
-    const incomeData = sortedMonths.map(month => ({
+    const incomeData = monthLabels.map((month, i) => ({
       month,
-      amount: incomeMap[month] || 0
+      amount: incomeByMonth[i]
     }));
 
-    const expenseData = sortedMonths.map(month => ({
+    const expenseData = monthLabels.map((month, i) => ({
       month,
-      amount: expenseMap[month] || 0
+      amount: expenseByMonth[i]
     }));
 
-    const comparisonData = sortedMonths.map(month => ({
+    const comparisonData = monthLabels.map((month, i) => ({
       month,
-      ingreso: incomeMap[month] || 0,
-      egreso: expenseMap[month] || 0
+      ingreso: incomeByMonth[i],
+      egreso: expenseByMonth[i]
     }));
 
     // IRP Calculation (Current Year)
-    const currentYear = new Date().getFullYear();
-    const currentYearReceipts = receipts.filter(r => new Date(r.date).getFullYear() === currentYear);
 
     const ingresosAnuales = currentYearReceipts
       .filter(r => r.type === ReceiptType.INCOME)
@@ -75,10 +66,10 @@ export const Reports: React.FC<ReportsProps> = ({ receipts }) => {
 
     // IVA Calculation (Current Month)
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentMonthName = now.toLocaleDateString('es-PY', { month: 'long' });
-    
-    const currentMonthReceipts = currentYearReceipts.filter(r => new Date(r.date).getMonth() === currentMonth);
+    const currentMonth = now.getUTCMonth();
+    const currentMonthName = now.toLocaleDateString('es-PY', { month: 'long', timeZone: 'UTC' });
+
+    const currentMonthReceipts = currentYearReceipts.filter(r => new Date(r.date).getUTCMonth() === currentMonth);
 
     const ivaDebito = currentMonthReceipts
       .filter(r => r.type === ReceiptType.INCOME)
