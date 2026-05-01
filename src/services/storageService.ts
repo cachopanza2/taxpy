@@ -1,47 +1,73 @@
 import { Receipt, UserProfile } from '../types';
+import { AuthService } from './authService';
 
 const API_BASE = '/api/comprobantes';
 
+function authHeaders(): Record<string, string> {
+  const token = AuthService.getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+async function apiFetch(url: string, options: RequestInit = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: { ...authHeaders(), ...(options.headers as Record<string, string> || {}) },
+  });
+  if (res.status === 401) {
+    AuthService.clearSession();
+    window.location.href = '/';
+    throw new Error('Sesión expirada. Por favor iniciá sesión nuevamente.');
+  }
+  return res;
+}
+
 export const StorageService = {
   initializeDefaultUser: async (): Promise<UserProfile> => {
-    // User is managed server-side now; return a local profile object for the UI
+    const user = AuthService.getUser();
+    if (user) {
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        settings: { currency: 'PYG', theme: 'light' },
+      };
+    }
     return {
       id: 'default',
       name: 'Usuario Demo',
       email: 'demo@taxflow.py',
-      settings: {
-        currency: 'PYG',
-        theme: 'light'
-      }
+      settings: { currency: 'PYG', theme: 'light' },
     };
   },
 
   getUser: async (): Promise<UserProfile | null> => {
+    const user = AuthService.getUser();
+    if (!user) return null;
     return {
-      id: 'default',
-      name: 'Usuario Demo',
-      email: 'demo@taxflow.py',
-      settings: {
-        currency: 'PYG',
-        theme: 'light'
-      }
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+      settings: { currency: 'PYG', theme: 'light' },
     };
   },
 
   updateUser: async (_user: UserProfile): Promise<void> => {
-    // User profile updates are local-only for now
+    // Profile updates are local-only for now
   },
 
   getReceipts: async (_userId: string): Promise<Receipt[]> => {
-    const res = await fetch(API_BASE);
+    const res = await apiFetch(API_BASE);
     if (!res.ok) throw new Error('Error al cargar comprobantes');
     return res.json();
   },
 
   addReceipt: async (receipt: Receipt): Promise<Receipt> => {
-    const res = await fetch(API_BASE, {
+    const res = await apiFetch(API_BASE, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(receipt),
     });
     if (!res.ok) throw new Error('Error al crear comprobante');
@@ -49,9 +75,8 @@ export const StorageService = {
   },
 
   updateReceipt: async (receipt: Receipt): Promise<Receipt> => {
-    const res = await fetch(`${API_BASE}/${receipt.id}`, {
+    const res = await apiFetch(`${API_BASE}/${receipt.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(receipt),
     });
     if (!res.ok) throw new Error('Error al actualizar comprobante');
@@ -59,17 +84,14 @@ export const StorageService = {
   },
 
   deleteReceipt: async (receiptId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/${receiptId}`, {
-      method: 'DELETE',
-    });
+    const res = await apiFetch(`${API_BASE}/${receiptId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Error al eliminar comprobante');
   },
 
   clearAllData: async (): Promise<void> => {
-    // Fetch all receipts and delete them one by one
-    const receipts = await StorageService.getReceipts('default');
+    const receipts = await StorageService.getReceipts('');
     for (const r of receipts) {
       await StorageService.deleteReceipt(r.id);
     }
-  }
+  },
 };

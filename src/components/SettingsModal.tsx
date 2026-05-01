@@ -9,12 +9,13 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onClearData: () => void;
+  onLogout: () => void;
   receipts: Receipt[];
   userProfile: UserProfile | null;
   onUpdateProfile: (profile: UserProfile) => void;
 }
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onClearData, receipts, userProfile, onUpdateProfile }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onClearData, onLogout, receipts, userProfile, onUpdateProfile }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -122,7 +123,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             </div>
           </button>
 
-          <button 
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-4 p-4 bg-slate-50 hover:bg-slate-100 rounded-2xl transition-colors text-left group border border-slate-100"
+          >
+            <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-600 group-hover:scale-110 transition-transform">
+              <LogOut className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-bold text-slate-800">Cerrar Sesión</p>
+              <p className="text-xs text-slate-500 font-medium">Salir de tu cuenta</p>
+            </div>
+          </button>
+
+          <button
             onClick={() => setShowDeleteConfirm(true)}
             className="w-full flex items-center gap-4 p-4 bg-rose-50 hover:bg-rose-100 rounded-2xl transition-colors text-left group border border-rose-100"
           >
