@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       'process.env': JSON.stringify(env),
+      'process.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(env.VITE_GOOGLE_CLIENT_ID || ''),
     },
     build: {
       outDir: 'dist',

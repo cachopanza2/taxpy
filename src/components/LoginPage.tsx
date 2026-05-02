@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { ScanLine, Mail, Lock, User, Eye, EyeOff, Loader2 } from "lucide-react";
 import { AuthService, AuthUser } from "../services/authService";
 
 interface Props {
   onLogin: (user: AuthUser) => void;
 }
+
+const GOOGLE_CLIENT_ID = process.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
 export const LoginPage: React.FC<Props> = ({ onLogin }) => {
   const [tab, setTab] = useState<"login" | "register">("login");
@@ -15,48 +17,39 @@ export const LoginPage: React.FC<Props> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const googleRef = useRef<HTMLDivElement>(null);
-  const googleClientId = process.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-
-  // Initialize Google Sign-In button
+  // Handle Google OAuth redirect callback (id_token arrives in URL hash)
   useEffect(() => {
-    if (!googleClientId) return;
-    let attempts = 0;
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const idToken = hash.get("id_token");
+    if (!idToken) return;
 
-    const handleCredential = async (response: { credential: string }) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const user = await AuthService.loginWithGoogle(response.credential);
-        onLogin(user);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Error con Google");
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Clean the URL
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
 
-    const tryRender = () => {
-      if (window.google?.accounts?.id && googleRef.current) {
-        window.google.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: handleCredential,
-        });
-        window.google.accounts.id.renderButton(googleRef.current, {
-          theme: "outline",
-          size: "large",
-          width: googleRef.current.offsetWidth || 320,
-          text: "continue_with",
-          locale: "es",
-        });
-      } else if (attempts < 30) {
-        attempts++;
-        setTimeout(tryRender, 100);
-      }
-    };
+    setLoading(true);
+    setError(null);
+    AuthService.loginWithGoogle(idToken)
+      .then(onLogin)
+      .catch((e) => setError(e instanceof Error ? e.message : "Error con Google"))
+      .finally(() => setLoading(false));
+  }, [onLogin]);
 
-    tryRender();
-  }, [googleClientId, onLogin]);
+  const handleGoogleLogin = () => {
+    if (!GOOGLE_CLIENT_ID) return;
+    const nonce = (crypto as any).randomUUID
+      ? (crypto as any).randomUUID()
+      : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: window.location.origin + "/",
+      response_type: "id_token",
+      scope: "openid email profile",
+      nonce,
+    });
+
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,9 +84,9 @@ export const LoginPage: React.FC<Props> = ({ onLogin }) => {
       </div>
 
       {/* Card */}
-      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl">
         {/* Tabs */}
-        <div className="flex border-b border-slate-100">
+        <div className="flex border-b border-slate-100 rounded-t-3xl overflow-hidden">
           {(["login", "register"] as const).map((t) => (
             <button
               key={t}
@@ -109,95 +102,101 @@ export const LoginPage: React.FC<Props> = ({ onLogin }) => {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Name (register only) */}
-          {tab === "register" && (
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Nombre completo"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition"
-              />
+        <div className="p-6 space-y-4">
+          {loading && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-7 h-7 animate-spin text-emerald-500" />
             </div>
           )}
 
-          {/* Email */}
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition"
-            />
-          </div>
+          {!loading && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {tab === "register" && (
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Nombre completo"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition"
+                  />
+                </div>
+              )}
 
-          {/* Password */}
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type={showPwd ? "text" : "password"}
-              placeholder="Contraseña"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPwd(!showPwd)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-            >
-              {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">
-              {error}
-            </div>
-          )}
-
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
-          >
-            {loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : tab === "login" ? (
-              "Iniciar Sesión"
-            ) : (
-              "Crear Cuenta"
-            )}
-          </button>
-
-          {/* Divider */}
-          {googleClientId && (
-            <>
-              <div className="flex items-center gap-3 my-2">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-xs text-slate-400 font-medium">o</span>
-                <div className="flex-1 h-px bg-slate-200" />
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition"
+                />
               </div>
 
-              {/* Google button rendered by GIS */}
-              <div
-                ref={googleRef}
-                className="flex justify-center w-full min-h-[44px]"
-              />
-            </>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type={showPwd ? "text" : "password"}
+                  placeholder="Contraseña"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd(!showPwd)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+
+              {error && (
+                <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+              >
+                {tab === "login" ? "Iniciar Sesión" : "Crear Cuenta"}
+              </button>
+
+              {GOOGLE_CLIENT_ID && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-slate-200" />
+                    <span className="text-xs text-slate-400 font-medium">o</span>
+                    <div className="flex-1 h-px bg-slate-200" />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    className="w-full flex items-center justify-center gap-3 py-3 px-4 border-2 border-slate-200 rounded-xl hover:bg-slate-50 active:bg-slate-100 transition-colors font-semibold text-slate-700 text-sm"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                      <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/>
+                      <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2.01c-.72.49-1.63.8-2.7.8-2.08 0-3.84-1.4-4.47-3.28H1.83v2.07A8 8 0 0 0 8.98 17z"/>
+                      <path fill="#FBBC05" d="M4.51 10.57A4.8 4.8 0 0 1 4.26 9c0-.55.09-1.08.25-1.57V5.36H1.83a8 8 0 0 0 0 7.28l2.68-2.07z"/>
+                      <path fill="#EA4335" d="M8.98 3.58c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.36L4.51 7.43c.63-1.89 2.4-3.85 4.47-3.85z"/>
+                    </svg>
+                    Continuar con Google
+                  </button>
+                </>
+              )}
+            </form>
           )}
-        </form>
+        </div>
       </div>
 
       <p className="mt-6 text-xs text-slate-600 text-center max-w-xs">
