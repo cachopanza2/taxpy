@@ -6,7 +6,8 @@ interface Props {
   onLogin: (user: AuthUser) => void;
 }
 
-const GOOGLE_CLIENT_ID = process.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+const GOOGLE_CLIENT_ID =
+  (process.env.VITE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "") || undefined;
 
 export const LoginPage: React.FC<Props> = ({ onLogin }) => {
   const [tab, setTab] = useState<"login" | "register">("login");
