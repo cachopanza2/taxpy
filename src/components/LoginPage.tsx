@@ -6,8 +6,11 @@ interface Props {
   onLogin: (user: AuthUser) => void;
 }
 
+// Google Client ID - valor público, no es un secreto
 const GOOGLE_CLIENT_ID =
-  (process.env.VITE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "") || undefined;
+  process.env.VITE_GOOGLE_CLIENT_ID ||
+  process.env.GOOGLE_CLIENT_ID ||
+  "1037165374502-1d7ij3h5aq232tqg358nu9hasigorqjv.apps.googleusercontent.com";
 
 export const LoginPage: React.FC<Props> = ({ onLogin }) => {
   const [tab, setTab] = useState<"login" | "register">("login");
