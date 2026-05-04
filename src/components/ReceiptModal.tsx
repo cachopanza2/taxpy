@@ -6,13 +6,14 @@ interface ReceiptModalProps {
   receipt: Receipt | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (receipt: Receipt) => void;
+  onSave: (receipt: Receipt) => Promise<void>;
   onDelete?: (id: string) => void;
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ receipt, isOpen, onClose, onSave, onDelete }) => {
   const [formData, setFormData] = useState<Partial<Receipt>>({});
   const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (receipt) {
@@ -28,15 +29,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ receipt, isOpen, onC
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.providerName || !formData.total || !formData.date) {
       setErrors(['Por favor complete los campos obligatorios (Proveedor, Fecha, Total)']);
       return;
     }
-    
-    onSave(formData as Receipt);
-    onClose();
+    setSaving(true);
+    setErrors([]);
+    try {
+      await onSave(formData as Receipt);
+    } catch (err) {
+      setErrors([err instanceof Error ? err.message : 'Error al guardar. Intenta nuevamente.']);
+      setSaving(false);
+    }
   };
 
   const formatAmount = (value: number | undefined) => {
@@ -279,10 +285,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ receipt, isOpen, onC
           <button
             type="submit"
             form="receipt-form"
-            className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold text-lg hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 active:scale-[0.98] flex items-center justify-center gap-2"
+            disabled={saving}
+            className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold text-lg hover:bg-emerald-700 disabled:opacity-60 transition-all shadow-lg shadow-emerald-600/20 active:scale-[0.98] flex items-center justify-center gap-2"
           >
             <Save className="w-5 h-5" />
-            Guardar Comprobante
+            {saving ? 'Guardando...' : 'Guardar Comprobante'}
           </button>
           
           {receipt?.id && onDelete && (

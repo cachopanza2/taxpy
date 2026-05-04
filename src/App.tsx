@@ -194,19 +194,24 @@ function App() {
   };
 
   const saveReceipt = async (r: Receipt) => {
-    const receiptToSave = { ...r, status: ReceiptStatus.VERIFIED };
+    // Strip imageUrl: it's a large base64 data URL not suitable for DB storage
+    const { imageUrl: _img, ...rest } = { ...r, status: ReceiptStatus.VERIFIED };
+    const receiptToSave = rest as Receipt;
 
-    if (isNewReceipt) {
-      const saved = await StorageService.addReceipt(receiptToSave);
-      setReceipts(prev => [saved, ...prev]);
-    } else {
-      const saved = await StorageService.updateReceipt(receiptToSave);
-      setReceipts(prev => prev.map(existing => existing.id === r.id ? saved : existing));
+    try {
+      if (isNewReceipt) {
+        const saved = await StorageService.addReceipt(receiptToSave);
+        setReceipts(prev => [saved, ...prev]);
+      } else {
+        const saved = await StorageService.updateReceipt(receiptToSave);
+        setReceipts(prev => prev.map(existing => existing.id === r.id ? saved : existing));
+      }
+      setEditReceipt(null);
+      setIsNewReceipt(false);
+      setIsModalOpen(false);
+    } catch (error) {
+      setProcessingError(error instanceof Error ? error.message : 'Error al guardar el comprobante. Intenta nuevamente.');
     }
-
-    setEditReceipt(null);
-    setIsNewReceipt(false);
-    setIsModalOpen(false);
   };
 
   const handleDelete = (id: string) => {
