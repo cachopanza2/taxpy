@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, LogOut, Database, FileSpreadsheet, Info, User, Save } from 'lucide-react';
+import { X, Trash2, LogOut, Database, FileSpreadsheet, Info, User, Save, Share2, Check } from 'lucide-react';
 import { StorageService } from '../services/storageService';
 import { ExcelService } from '../services/excelService';
 import { Receipt, UserProfile } from '../types';
@@ -19,6 +19,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     if (userProfile) {
@@ -31,6 +32,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
   const handleExport = () => {
     ExcelService.exportToExcel(receipts);
+  };
+
+  const handleShare = async () => {
+    const url = 'https://taxpy.netlify.app';
+    const shareData = {
+      title: 'TaxFlow.py – Gestión Tributaria Paraguay',
+      text: 'Llevá el control de tus facturas y calculá el IVA fácilmente con TaxFlow.py',
+      url,
+    };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch (_) { /* cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2500);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -120,6 +137,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             <div>
               <p className="font-bold text-slate-800">Exportar Datos</p>
               <p className="text-xs text-slate-500 font-medium">Descargar todo en Excel</p>
+            </div>
+          </button>
+
+          <button
+            onClick={handleShare}
+            className="w-full flex items-center gap-4 p-4 bg-slate-50 hover:bg-slate-100 rounded-2xl transition-colors text-left group border border-slate-100"
+          >
+            <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+              {shareCopied ? <Check className="w-5 h-5 text-emerald-500" /> : <Share2 className="w-5 h-5" />}
+            </div>
+            <div>
+              <p className="font-bold text-slate-800">Compartir App</p>
+              <p className="text-xs text-slate-500 font-medium">
+                {shareCopied ? '¡Enlace copiado!' : 'Invitá a otros usuarios'}
+              </p>
             </div>
           </button>
 
