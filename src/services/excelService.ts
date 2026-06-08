@@ -1,6 +1,68 @@
 import * as XLSX from 'xlsx';
 import { Receipt, ReceiptType, Category, ReceiptStatus, ReceiptOrigin } from '../types';
 
+// Normalize a string for matching: lowercase, trimmed, accents removed.
+const normalizeKey = (value: string): string =>
+  value.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+// Lookup table from a normalized value to a Category. Includes the Spanish
+// display names, their accent-free variants, and common English synonyms so a
+// category written in almost any reasonable way is matched instead of falling
+// back to "Otros".
+const CATEGORY_LOOKUP: Record<string, Category> = (() => {
+  const map: Record<string, Category> = {};
+  // Spanish display names (with and without accents, via normalizeKey)
+  for (const value of Object.values(Category)) {
+    map[normalizeKey(value)] = value;
+  }
+  // English / alternate synonyms
+  const synonyms: Record<string, Category> = {
+    food: Category.FOOD,
+    meal: Category.FOOD,
+    transport: Category.TRANSPORT,
+    transportation: Category.TRANSPORT,
+    health: Category.HEALTH,
+    medical: Category.HEALTH,
+    education: Category.EDUCATION,
+    clothing: Category.CLOTHING,
+    housing: Category.HOUSING,
+    home: Category.HOUSING,
+    entertainment: Category.ENTERTAINMENT,
+    services: Category.SERVICES,
+    service: Category.SERVICES,
+    other: Category.OTHER,
+    others: Category.OTHER,
+  };
+  for (const [key, cat] of Object.entries(synonyms)) {
+    map[normalizeKey(key)] = cat;
+  }
+  return map;
+})();
+
+// Resolve the category cell from a row, tolerating different header spellings
+// (accents, casing, English) and different written values.
+const resolveCategory = (row: Record<string, any>): Category => {
+  const headerCandidates = ['Categoría', 'Categoria', 'Category', 'Rubro'];
+  let raw: unknown;
+  for (const header of headerCandidates) {
+    if (row[header] != null && row[header] !== '') {
+      raw = row[header];
+      break;
+    }
+  }
+  // Fallback: scan all keys for one whose normalized name is "categoria".
+  if (raw == null) {
+    for (const key of Object.keys(row)) {
+      if (normalizeKey(key) === 'categoria' || normalizeKey(key) === 'category') {
+        raw = row[key];
+        break;
+      }
+    }
+  }
+  if (raw == null || raw === '') return Category.OTHER;
+  return CATEGORY_LOOKUP[normalizeKey(String(raw))] ?? Category.OTHER;
+};
+
 export const ExcelService = {
   exportToExcel: (receipts: Receipt[], filename: string = 'gastos_irp.xlsx') => {
     const data = receipts.map(r => ({
@@ -70,7 +132,7 @@ export const ExcelService = {
             iva5: Number(row['IVA 5%']) || 0,
             currency: 'PYG',
             type: (() => { const t = ((row['Tipo de Registro'] || row['Tipo'] || '') as string).toUpperCase(); return (t === 'VENTAS' || t === 'INGRESOS' || t === 'INGRESO') ? ReceiptType.INCOME : ReceiptType.EXPENSE; })(),
-            category: (Object.values(Category).includes(row['Categoría'])) ? row['Categoría'] : Category.OTHER,
+            category: resolveCategory(row),
             irpInciso: '',
             origin: ReceiptOrigin.EXCEL,
             status: ReceiptStatus.VERIFIED,
