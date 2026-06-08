@@ -97,6 +97,24 @@ function normalizeCategory(value: string | undefined | null): string {
   return "otros";
 }
 
+// Reverse map: DB category value -> Spanish display name used by the frontend.
+const CATEGORY_DISPLAY: Record<string, string> = {
+  alimentacion: "Alimentación",
+  transporte: "Transporte",
+  salud: "Salud",
+  educacion: "Educación",
+  vestimenta: "Vestimenta",
+  vivienda: "Vivienda",
+  entretenimiento: "Entretenimiento",
+  servicios: "Servicios",
+  otros: "Otros",
+};
+
+function displayCategory(value: unknown): string {
+  const key = String(value || "otros").toLowerCase().trim();
+  return CATEGORY_DISPLAY[key] ?? "Otros";
+}
+
 // Map DB row to frontend Receipt shape
 function mapRowToReceipt(row: Record<string, unknown>) {
   return {
@@ -112,7 +130,7 @@ function mapRowToReceipt(row: Record<string, unknown>) {
     iva5: Number(row.iva_5) || 0,
     currency: "PYG",
     type: row.tipo === "ingreso" ? "INCOME" : "EXPENSE",
-    category: row.categoria || "otros",
+    category: displayCategory(row.categoria),
     irpInciso: "",
     origin: "MANUAL",
     status: "VERIFIED",
