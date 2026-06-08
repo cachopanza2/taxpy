@@ -1,6 +1,30 @@
 import * as XLSX from 'xlsx';
 import { Receipt, ReceiptType, Category, ReceiptStatus, ReceiptOrigin } from '../types';
 
+// Normaliza un texto quitando acentos, espacios y pasándolo a minúsculas
+const normalize = (value: unknown): string =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
+    .toLowerCase();
+
+// Mapa de categorías disponibles, indexado por su versión normalizada
+const CATEGORY_BY_NORMALIZED: Record<string, Category> = Object.values(Category).reduce(
+  (acc, cat) => {
+    acc[normalize(cat)] = cat;
+    return acc;
+  },
+  {} as Record<string, Category>
+);
+
+// Resuelve el valor de la columna "Categoria" a una de las categorías disponibles.
+// Acepta el encabezado con o sin acento y compara sin distinguir mayúsculas/acentos.
+const resolveCategory = (row: any): Category => {
+  const raw = row['Categoria'] ?? row['Categoría'] ?? row['CATEGORIA'] ?? row['categoria'];
+  return CATEGORY_BY_NORMALIZED[normalize(raw)] ?? Category.OTHER;
+};
+
 export const ExcelService = {
   exportToExcel: (receipts: Receipt[], filename: string = 'gastos_irp.xlsx') => {
     const data = receipts.map(r => ({
@@ -70,7 +94,7 @@ export const ExcelService = {
             iva5: Number(row['IVA 5%']) || 0,
             currency: 'PYG',
             type: (() => { const t = ((row['Tipo de Registro'] || row['Tipo'] || '') as string).toUpperCase(); return (t === 'VENTAS' || t === 'INGRESOS' || t === 'INGRESO') ? ReceiptType.INCOME : ReceiptType.EXPENSE; })(),
-            category: (Object.values(Category).includes(row['Categoría'])) ? row['Categoría'] : Category.OTHER,
+            category: resolveCategory(row),
             irpInciso: '',
             origin: ReceiptOrigin.EXCEL,
             status: ReceiptStatus.VERIFIED,
